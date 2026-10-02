@@ -76,6 +76,24 @@ namespace Move_n_link
 
         private void button1_Click_1(object sender, EventArgs e)
         {
+            if (!Program.IsAdministrator())
+            {
+                DialogResult dialogResult = MessageBox.Show(
+                    "Administrator privileges are required to create symbolic links. Would you like to restart the application as administrator?",
+                    "Administrator Privileges Required",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (dialogResult == DialogResult.Yes)
+                {
+                    if (Program.TryRestartAsAdministrator())
+                    {
+                        Application.Exit();
+                    }
+                }
+                return;
+            }
+
             //Show source path test
             MessageBox.Show(textBoxSRC.Text, "Source", MessageBoxButtons.OK);
 
@@ -103,21 +121,50 @@ namespace Move_n_link
             //}
 
 
-            string sourcePath = textBoxSRC.Text;
-            string destinationPath = textBoxDEST.Text;
+            string sourcePath = textBoxSRC.Text.Trim();
+            string destinationPath = textBoxDEST.Text.Trim();
 
-            Win32FileUtils.CopyDirectoryAcrossFilesystems(sourcePath, destinationPath);
-            Directory.Delete(textBoxSRC.Text, true);
+            if (string.IsNullOrEmpty(sourcePath) || string.IsNullOrEmpty(destinationPath))
+            {
+                MessageBox.Show("Please select both a source and a destination path.", "Missing Paths", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!Directory.Exists(sourcePath))
+            {
+                MessageBox.Show("The source directory does not exist.", "Invalid Source", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
 
             try
             {
-                Directory.CreateSymbolicLink(textBoxSRC.Text, textBoxDEST.Text);
+                Win32FileUtils.CopyDirectoryAcrossFilesystems(sourcePath, destinationPath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to copy directory: {ex.Message}", "Copy Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(sourcePath, true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Files were copied to destination, but failed to delete original source folder: {ex.Message}", "Delete Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            try
+            {
+                Directory.CreateSymbolicLink(sourcePath, destinationPath);
+                MessageBox.Show("Symbolic link created successfully.", "Yay", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex2)
             {
-                MessageBox.Show($"An error occurred: {ex2.Message}");
+                MessageBox.Show($"The source folder was moved, but creating the symbolic link failed: {ex2.Message}", "Link Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            MessageBox.Show("Symbolic link created successfully.", "Yay", MessageBoxButtons.OK);
         }
     }
 }
@@ -168,6 +215,10 @@ public static class Win32FileUtils
         if (result != 0)
         {
             throw new Exception("Error copying directory: " + result);
+        }
+        if (fileOp.fAnyOperationsAborted)
+        {
+            throw new Exception("Copy operation was aborted.");
         }
     }
 }
